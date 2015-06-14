@@ -1,0 +1,18 @@
+<html>
+    <head>
+        <script src="http://code.jquery.com/jquery-1.8.3.js"></script>
+        <script src="phono.sdp.js"></script>
+        <script src="dc.js"></script>
+    </head>
+    <body>
+        <div>
+            <script>
+                
+                var ipse  = new IpseDataChannel("DtlsServer");
+                console.log("creating channel");
+                var channel = ipse.createDataChannel("chat", {});
+            </script>
+        </div>
+    </body>
+
+</html>
