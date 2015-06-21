@@ -1,43 +1,24 @@
 /*
- * Copyright (C) 2015 Westhawk Ltd<thp@westhawk.co.uk>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
  */
 package com.ipseorama.webapp.baddtls;
 
 import com.phono.srtplight.Log;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.math.BigInteger;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
-import java.security.Provider;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
-import java.util.Date;
+import java.io.InputStream;
+import java.security.Key;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableEntryException;
+import java.security.cert.CertificateException;
 import org.bouncycastle.crypto.digests.SHA256Digest;
 import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 import org.bouncycastle.crypto.tls.Certificate;
-import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.cert.X509CertificateHolder;
-import org.bouncycastle.cert.X509v3CertificateBuilder;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.crypto.util.PrivateKeyFactory;
 
 /**
  *
@@ -45,41 +26,38 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
  */
 public class CertHolder {
 
-    private static final Provider PROVIDER = new BouncyCastleProvider();
+    /*
+    create a cert like this :
+     keytool -genkey -keyalg RSA -alias selfsigned -keystore keystore.jks -storepass password -validity 360 -keysize 2048
 
+    */
     private Certificate _cert;
     private AsymmetricKeyParameter _key;
 
-    CertHolder() throws Exception {
+    CertHolder() throws UnrecoverableEntryException, KeyStoreException, IOException, FileNotFoundException, NoSuchAlgorithmException, CertificateException {
         if ((_key == null) || (_cert == null)) {
-            mkSelfSignedCert();
+            loadKeyNCert();
             Log.debug("Key and cert loaded.");
         }
     }
 
-    private void mkSelfSignedCert() throws Exception {
+    private void loadKeyNCert() throws KeyStoreException, FileNotFoundException, IOException, NoSuchAlgorithmException, CertificateException, UnrecoverableEntryException {
+        KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
 
-        //Security.addProvider(PROVIDER);
-        SecureRandom random = new SecureRandom();
-
-        KeyPairGenerator kpGen = KeyPairGenerator.getInstance("RSA");
-        kpGen.initialize(1024, random);
-        KeyPair keypair = kpGen.generateKeyPair();
-        PrivateKey key = keypair.getPrivate();
-        Date notBefore = new Date(System.currentTimeMillis() - 10000);
-        Date notAfter = new Date(System.currentTimeMillis() + 100000);
-        // Prepare the information required for generating an X.509 certificate.
-        X500Name owner = new X500Name("CN=" + "evil@baddtls.com");
-        X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
-                owner, new BigInteger(64, random), notBefore, notAfter, owner, keypair.getPublic());
-
-        ContentSigner signer = new JcaContentSignerBuilder("SHA256WithRSAEncryption").build(key);
-        X509CertificateHolder certHolder = builder.build(signer);
-        X509Certificate cert = new JcaX509CertificateConverter().setProvider(PROVIDER).getCertificate(certHolder);
-        cert.verify(keypair.getPublic());
-        org.bouncycastle.asn1.x509.Certificate carry[] = new org.bouncycastle.asn1.x509.Certificate[1];
-        carry[0] = org.bouncycastle.asn1.x509.Certificate.getInstance(cert.getEncoded());
-        _cert = new Certificate(carry);
+        // get user password and file input stream
+        char[] password = "password".toCharArray();
+        try (InputStream fis = this.getClass().getResourceAsStream("/keystore.jks")) {
+            ks.load(fis, password);
+            Key k = ks.getKey("selfsigned", password);
+            _key = PrivateKeyFactory.createKey(k.getEncoded());
+            java.security.cert.Certificate cert[] = ks.getCertificateChain("selfsigned");
+            org.bouncycastle.asn1.x509.Certificate carry[] = new org.bouncycastle.asn1.x509.Certificate[cert.length];
+            int n = 0;
+            for (java.security.cert.Certificate c : cert) {
+                carry[n++] = org.bouncycastle.asn1.x509.Certificate.getInstance(c.getEncoded());
+            }
+            _cert = new Certificate(carry);
+        }
     }
 
     Certificate getCert() {
